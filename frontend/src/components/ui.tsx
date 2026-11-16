@@ -57,6 +57,36 @@ export function Input({ className, ...rest }: ComponentProps<"input">) {
   );
 }
 
+/**
+ * Number field you can freely clear and retype. While typing, the text is kept as-is and
+ * every valid number is passed up (clamped to min..max). On blur the field snaps to the
+ * clamped value, or back to the last valid one if it was left empty.
+ */
+export function NumberInput({ value, onChange, min, max, className }: {
+  value: number;
+  onChange: (n: number) => void;
+  min: number;
+  max: number;
+  className?: string;
+}) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const clamp = (n: number) => Math.max(min, Math.min(max, Math.round(n)));
+  return (
+    <Input
+      type="text"
+      inputMode="numeric"
+      className={className}
+      value={draft ?? String(value)}
+      onChange={(e) => {
+        const text = e.target.value.replace(/[^\d]/g, "");
+        setDraft(text);
+        if (text !== "") onChange(clamp(Number(text)));
+      }}
+      onBlur={() => setDraft(null)}
+    />
+  );
+}
+
 export function Field({ label, hint, children, className }: { label: string; hint?: string; children: ReactNode; className?: string }) {
   return (
     <label className={cx("block", className)}>

@@ -15,7 +15,7 @@ import {
 } from "@/lib/api";
 import { ClipList } from "./ClipCard";
 import { JobProgress } from "./JobProgress";
-import { Alert, Badge, Button, Card, EmptyState, Field, Input, Segmented, Spinner, cx } from "./ui";
+import { Alert, Badge, Button, Card, EmptyState, Field, Input, NumberInput, Segmented, Spinner, cx } from "./ui";
 
 type Mode = "search" | "direct";
 type PlainFormat = "crop" | "blur" | "original";
@@ -248,13 +248,7 @@ export function NewJob({
                 <Input ref={topicRef} value={topic} onChange={(e) => setTopic(e.target.value)} placeholder="productivity" />
               </Field>
               <Field label="Videos to check per page">
-                <Input
-                  type="number"
-                  min={1}
-                  max={25}
-                  value={count}
-                  onChange={(e) => setCount(Math.max(1, Math.min(25, Number(e.target.value) || 1)))}
-                />
+                <NumberInput min={1} max={25} value={count} onChange={setCount} />
               </Field>
               <Button type="submit" className="w-full" loading={busy !== null} disabled={running}>
                 {searchLabel}
@@ -291,16 +285,16 @@ export function NewJob({
         <Card title="Clip settings">
           <div className="grid grid-cols-2 gap-3">
             <Field label="Min clips">
-              <Input type="number" min={1} max={20} value={minClips} onChange={(e) => setMinClips(Number(e.target.value) || 1)} />
+              <NumberInput min={1} max={20} value={minClips} onChange={setMinClips} />
             </Field>
             <Field label="Max clips">
-              <Input type="number" min={1} max={20} value={maxClips} onChange={(e) => setMaxClips(Number(e.target.value) || 1)} />
+              <NumberInput min={1} max={20} value={maxClips} onChange={setMaxClips} />
             </Field>
             <Field label="Min length (sec)">
-              <Input type="number" min={5} max={600} value={minLen} onChange={(e) => setMinLen(Number(e.target.value) || 5)} />
+              <NumberInput min={5} max={600} value={minLen} onChange={setMinLen} />
             </Field>
             <Field label="Max length (sec)">
-              <Input type="number" min={5} max={600} value={maxLen} onChange={(e) => setMaxLen(Number(e.target.value) || 5)} />
+              <NumberInput min={5} max={600} value={maxLen} onChange={setMaxLen} />
             </Field>
           </div>
           <div className="mt-4 rounded-md border border-zinc-200 p-3">

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { api, formatDuration, mediaUrl, type Background, type BackgroundTask } from "@/lib/api";
-import { Alert, Button, Card, EmptyState, Field, Input, ProgressBar, Spinner } from "./ui";
+import { Alert, Button, Card, EmptyState, Field, Input, NumberInput, ProgressBar, Spinner } from "./ui";
 
 function BackgroundCard({ bg, onDelete }: { bg: Background; onDelete: () => void }) {
   const ref = useRef<HTMLVideoElement>(null);
@@ -146,14 +146,7 @@ export function Backgrounds({ onChange }: { onChange?: () => void }) {
             <div>
               <Field label="Download random free-to-use videos" hint="Gameplay and satisfying videos whose uploader marks them as no-copyright. About 2 minutes each, video only.">
                 <div className="flex gap-2">
-                  <Input
-                    type="number"
-                    min={1}
-                    max={30}
-                    value={count}
-                    onChange={(e) => setCount(Math.max(1, Math.min(30, Number(e.target.value) || 1)))}
-                    className="w-20"
-                  />
+                  <NumberInput min={1} max={30} value={count} onChange={setCount} className="w-20" />
                   <Button className="flex-1 whitespace-nowrap" disabled={running} onClick={() => act(() => api.downloadBackgrounds(count))}>
                     Download
                   </Button>
