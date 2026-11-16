@@ -1,0 +1,6 @@
+openai>=1.40
+faster-whisper
+yt-dlp
+imageio-ffmpeg
+python-dotenv
+pydantic>=2
