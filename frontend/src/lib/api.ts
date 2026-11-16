@@ -131,7 +131,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   try {
     res = await fetch(`${API}${path}`, init);
   } catch {
-    throw new Error("Cannot reach the Clipper server. Is server.py running?");
+    throw new Error("Cannot reach the Clipper server. Is clipper-server running?");
   }
   if (!res.ok) {
     let msg = `${res.status} ${res.statusText}`;

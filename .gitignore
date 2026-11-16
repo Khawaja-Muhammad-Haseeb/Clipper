@@ -5,12 +5,11 @@
 .venv/
 __pycache__/
 *.py[cod]
+*.egg-info/
+build/
 
 # Pipeline data (downloads, cache, generated clips)
-downloads/
-work/
-insta_vid/
-yt_vids/
+data/
 
 # OS / editor
 .DS_Store

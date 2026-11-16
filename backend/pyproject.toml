@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "clipper"
+version = "0.1.0"
+description = "Turn long videos into short clips with captions for Instagram and YouTube."
+requires-python = ">=3.11"
+dependencies = [
+    "openai>=1.40",
+    "pydantic>=2",
+    "python-dotenv",
+    "yt-dlp",
+    "imageio-ffmpeg",
+    "faster-whisper",
+    "fastapi",
+    "uvicorn[standard]",
+    "python-multipart",
+]
+
+[project.scripts]
+clipper = "clipper.cli:main"
+clipper-server = "clipper.api.app:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
