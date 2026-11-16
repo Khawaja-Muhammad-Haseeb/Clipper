@@ -24,6 +24,8 @@ export default function Home() {
     window.location.assign(v === "library" ? "#library" : "#");
   };
   const [librarySlug, setLibrarySlug] = useState<string | null>(null);
+  // Re-clip request from the Library: remounts NewJob with the source pre-filled.
+  const [reclip, setReclip] = useState<{ source: string; n: number } | null>(null);
   const [config, setConfig] = useState<Config | null>(null);
   const [offline, setOffline] = useState(false);
 
@@ -100,13 +102,24 @@ export default function Home() {
         )}
         <div className={view === "new" ? "" : "hidden"}>
           <NewJob
+            key={reclip?.n ?? 0}
+            initialSource={reclip?.source}
             onOpenLibrary={(slug) => {
               setLibrarySlug(slug);
               setView("library");
             }}
           />
         </div>
-        {view === "library" && <Library key={librarySlug ?? "lib"} initialSlug={librarySlug} />}
+        {view === "library" && (
+          <Library
+            key={librarySlug ?? "lib"}
+            initialSlug={librarySlug}
+            onReclip={(source) => {
+              setReclip((r) => ({ source, n: (r?.n ?? 0) + 1 }));
+              setView("new");
+            }}
+          />
+        )}
       </main>
     </div>
   );

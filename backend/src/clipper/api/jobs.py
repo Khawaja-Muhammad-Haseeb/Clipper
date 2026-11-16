@@ -49,6 +49,8 @@ class Job:
         st["indeterminate"] = fraction is None
         if detail is not None:
             st["detail"] = detail
+        elif st["status"] == "done":
+            st["detail"] = None  # drop "Waiting for the model" etc. once finished
 
     # ---- lifecycle ----
     def run(self) -> None:

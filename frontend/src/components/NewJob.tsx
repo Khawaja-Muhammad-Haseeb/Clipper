@@ -25,13 +25,13 @@ const FORMAT_HINT: Record<ClipFormat, string> = {
   original: "Keep the original aspect ratio.",
 };
 
-export function NewJob({ onOpenLibrary }: { onOpenLibrary: (slug: string) => void }) {
-  // Source
-  const [mode, setMode] = useState<Mode>("search");
+export function NewJob({ onOpenLibrary, initialSource }: { onOpenLibrary: (slug: string) => void; initialSource?: string }) {
+  // Source (a re-clip from the Library opens this with the source pre-filled)
+  const [mode, setMode] = useState<Mode>(initialSource ? "direct" : "search");
   const [youtuber, setYoutuber] = useState("");
   const [topic, setTopic] = useState("");
   const [count, setCount] = useState(5);
-  const [direct, setDirect] = useState("");
+  const [direct, setDirect] = useState(initialSource ?? "");
   const [uploading, setUploading] = useState(false);
 
   // Search results
@@ -50,7 +50,8 @@ export function NewJob({ onOpenLibrary }: { onOpenLibrary: (slug: string) => voi
   const [minLen, setMinLen] = useState(20);
   const [maxLen, setMaxLen] = useState(60);
   const [format, setFormat] = useState<ClipFormat>("crop");
-  const [fresh, setFresh] = useState(false);
+  const [fresh, setFresh] = useState(Boolean(initialSource));
+  const [keepSource, setKeepSource] = useState(false);
 
   // Job
   const [job, setJob] = useState<Job | null>(null);
@@ -157,6 +158,7 @@ export function NewJob({ onOpenLibrary }: { onOpenLibrary: (slug: string) => voi
         max_len: Math.max(minLen, maxLen),
         format,
         fresh,
+        keep_source: keepSource,
       });
       setJob(j);
       setTimeout(() => progressRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
@@ -282,6 +284,20 @@ export function NewJob({ onOpenLibrary }: { onOpenLibrary: (slug: string) => voi
               <span className="block text-xs text-zinc-500">Ignore saved clip picks if this video was processed before.</span>
             </span>
           </label>
+          <label className="mt-3 flex cursor-pointer items-start gap-2.5">
+            <input
+              type="checkbox"
+              checked={keepSource}
+              onChange={(e) => setKeepSource(e.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-zinc-300 accent-zinc-900"
+            />
+            <span>
+              <span className="block text-sm text-zinc-900">Keep source video</span>
+              <span className="block text-xs text-zinc-500">
+                Deleted after clipping by default. The transcript is always kept, so new clips only need a re-download.
+              </span>
+            </span>
+          </label>
         </Card>
 
         <div className="rounded-lg border border-zinc-200 bg-white p-4">
@@ -308,7 +324,7 @@ export function NewJob({ onOpenLibrary }: { onOpenLibrary: (slug: string) => voi
                   <div>
                     <h2 className="text-base font-semibold text-zinc-900">Clips</h2>
                     <p className="text-xs text-zinc-500">
-                      {result.clips.length} clips saved to insta_vid/ and yt_vids/
+                      {result.clips.length} clips saved to data/clips/
                     </p>
                   </div>
                   <Button size="sm" variant="ghost" onClick={() => onOpenLibrary(result.slug)}>

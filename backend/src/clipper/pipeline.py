@@ -1,39 +1,89 @@
-"""The clip pipeline: get video -> transcribe -> pick clips -> captions -> cut & save."""
+"""The clip pipeline.
+
+  1. resolve      identify the video (no download yet)
+  2. transcribe   cached in data/work/<slug>/transcript.json   (needs the video once)
+  3. pick clips   cached in data/work/<slug>/clip_picks.json   (transcript only)
+  4. captions     one LLM request for all clips                (transcript only)
+  5. cut & save   data/clips/<slug>/clip_XX_<name>.mp4 + .json (needs the video)
+  6. clean up     delete the downloaded / uploaded source video
+
+Because steps 3-4 only need the transcript, making new clips from a video processed
+before skips transcription, picks the clips first, and only then downloads the video
+again for cutting.
+"""
 
 from __future__ import annotations
 
 import json
+import re
 import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 
 from openai import OpenAI
 
-from clipper import analysis, config, llm
+from clipper import analysis, config, llm, youtube
 from clipper.errors import ClipperError
 from clipper.media import cut_clip, probe
 from clipper.reporting import log, progress
 from clipper.schemas import ClipMeta, ClipOptions, ClipPick
 from clipper.transcribe import Segment, format_for_llm, transcribe
 from clipper.utils import seconds_to_ts, slugify, ts_to_seconds
-from clipper.youtube import get_video
+
+
+def _write_json(path: Path, data) -> None:
+    path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
+class SourceVideo:
+    """The source video file, downloaded only when a step actually needs it."""
+
+    def __init__(self, path: Path | None, meta: dict):
+        self.path = path
+        self.meta = meta
+
+    def get(self, stage: str) -> Path:
+        if self.path and self.path.exists():
+            return self.path
+        if not self.meta.get("url"):
+            raise ClipperError("The source file no longer exists. Upload or select it again.")
+
+        def on_progress(frac: float, speed: str | None) -> None:
+            if stage == "download":
+                progress("download", frac, speed)
+            else:  # downloading again during the cut stage (re-clipping)
+                progress(stage, None, f"Downloading video {int(frac * 100)}%")
+
+        self.path = youtube.download(self.meta["url"], self.meta["id"], on_progress)
+        return self.path
+
+    def delete_if_temporary(self) -> None:
+        """Delete the source if we created it (download or upload), never the user's own files."""
+        if not self.path or not self.path.exists():
+            return
+        if not self.path.resolve().is_relative_to(config.DOWNLOADS_DIR.resolve()):
+            return
+        size_mb = self.path.stat().st_size / 1e6
+        self.path.unlink()
+        log(f"Deleted source video ({size_mb:.0f} MB). The transcript is kept for re-clipping.")
 
 
 def run(source: str, opts: ClipOptions, client: OpenAI | None = None) -> dict:
     """Process one video. Returns {"slug", "title", "clips": [clip names]}."""
     client = client or llm.client()
 
-    progress("download", 0.0)
-    video, meta = get_video(source)
-    progress("download", 1.0)
-    duration, w, h = probe(video)
-    log(f"Video: {meta['title']} ({seconds_to_ts(duration)}, {w}x{h})")
+    progress("download", None, "Reading video info")
+    path, meta = youtube.resolve(source)
+    video = SourceVideo(path, meta)
+    log(f"Video: {meta['title']}" + (f" ({seconds_to_ts(meta['duration'])})" if meta.get("duration") else ""))
 
     slug = slugify(meta["title"])
     work = config.WORK_DIR / slug
     work.mkdir(parents=True, exist_ok=True)
+    _write_json(work / "source.json", meta)
 
-    segments = _transcript(video, work, duration)
+    segments = _transcript(video, work)
+    duration = float(meta.get("duration") or segments[-1]["end"])
     picks = _clip_picks(client, segments, meta, duration, work, opts)
 
     log("Writing captions, titles and hashtags...")
@@ -41,43 +91,50 @@ def run(source: str, opts: ClipOptions, client: OpenAI | None = None) -> dict:
     metas = analysis.describe_clips(client, picks, meta)
     progress("captions", 1.0)
 
-    saved = _cut_and_save(video, picks, metas, meta, slug, work, opts, w, h)
+    saved = _cut_and_save(video, picks, metas, meta, slug, work, opts)
+
+    if not opts.keep_source:
+        video.delete_if_temporary()
     log("Done!")
-    log(f"  Instagram clips: {config.INSTA_DIR / slug}")
-    log(f"  YouTube clips:   {config.YT_DIR / slug}")
+    log(f"  Clips: {config.CLIPS_DIR / slug}")
     return {"slug": slug, "title": meta["title"], "clips": saved}
 
 
 # ---- Steps ------------------------------------------------------------------
-def _transcript(video: Path, work: Path, duration: float) -> list[Segment]:
-    """Transcribe once; cached in work/<slug>/transcript.json."""
+def _transcript(video: SourceVideo, work: Path) -> list[Segment]:
     cache = work / "transcript.json"
     if cache.exists():
         segments = json.loads(cache.read_text(encoding="utf-8"))
-        log(f"Reusing saved transcript ({len(segments)} segments)")
-    else:
-        progress("transcribe", 0.0)
-        segments = transcribe(video, work, duration)
-        if not segments:
-            raise ClipperError("Whisper found no speech in this video.")
-        cache.write_text(json.dumps(segments, indent=1, ensure_ascii=False), encoding="utf-8")
+        log(f"Reusing saved transcript ({len(segments)} segments); the video is only needed for cutting")
+        progress("download", 1.0, "Later, for cutting")
+        progress("transcribe", 1.0, "Saved transcript")
+        return segments
+
+    path = video.get("download")
+    progress("download", 1.0)
+    duration, _, _ = probe(path)
+    video.meta["duration"] = duration
+    progress("transcribe", 0.0)
+    segments = transcribe(path, work, duration)
+    if not segments:
+        raise ClipperError("Whisper found no speech in this video.")
+    _write_json(cache, segments)
     progress("transcribe", 1.0)
     return segments
 
 
 def _clip_picks(client: OpenAI, segments: list[Segment], meta: dict, duration: float,
                 work: Path, opts: ClipOptions) -> list[dict]:
-    """Ask the LLM for clips; cached in work/<slug>/clip_picks.json unless opts.fresh."""
     cache = work / "clip_picks.json"
     if cache.exists() and not opts.fresh:
         picks = json.loads(cache.read_text(encoding="utf-8"))
-        log("Reusing saved clip picks (use fresh / --fresh to redo)")
+        log("Reusing saved clip picks (use fresh / --fresh to pick new ones)")
     else:
         log("Asking the LLM to pick clips from the transcript...")
         progress("pick", None, "Waiting for the model")
         raw = analysis.find_clips(client, format_for_llm(segments), meta, duration, opts)
         picks = snap_picks(raw, segments, duration, opts)
-        cache.write_text(json.dumps(picks, indent=2, ensure_ascii=False), encoding="utf-8")
+        _write_json(cache, picks)
     if not picks:
         raise ClipperError("No usable clips were returned. Try again with fresh picks or another model.")
     progress("pick", 1.0, f"{len(picks)} clips")
@@ -116,30 +173,34 @@ def snap_picks(picks: list[ClipPick], segments: list[Segment], duration: float,
     return out
 
 
-def _cut_and_save(video: Path, picks: list[dict], metas: dict[int, ClipMeta], meta: dict,
-                  slug: str, work: Path, opts: ClipOptions, w: int, h: int) -> list[str]:
-    insta_out, yt_out = config.INSTA_DIR / slug, config.YT_DIR / slug
-    for folder in (insta_out, yt_out):
-        folder.mkdir(parents=True, exist_ok=True)
-        # Re-running a video replaces its clips instead of mixing old and new ones.
-        for old in folder.glob("clip_*.*"):
-            old.unlink()
+def _cut_and_save(video: SourceVideo, picks: list[dict], metas: dict[int, ClipMeta], meta: dict,
+                  slug: str, work: Path, opts: ClipOptions) -> list[str]:
+    n = len(picks)
+    progress("cut", None if not (video.path and video.path.exists()) else 0.0, f"0 / {n}")
+    src = video.get("cut")
+    _, w, h = probe(src)
+
+    out_dir = config.CLIPS_DIR / slug
+    if out_dir.exists():  # re-running a video replaces its clips
+        shutil.rmtree(out_dir)
+    out_dir.mkdir(parents=True)
 
     saved: list[str] = []
-    n = len(picks)
-    progress("cut", 0.0, f"0 / {n}")
     for i, pick in enumerate(picks, 1):
         cm = metas.get(i)
         if cm is None:
             log(f"[{i}/{n}] No captions returned for this clip; skipping")
             continue
-        name = f"clip_{i:02d}_{slugify(cm.name, 40)}"
-        tmp_clip = work / f"{name}.mp4"
+        # Models sometimes prefix their own "clip_1_"; we add the number ourselves.
+        short = re.sub(r"^(clip_?\d*_?)+", "", slugify(cm.name, 60)) or "clip"
+        name = f"clip_{i:02d}_{short[:40].strip('_')}"
         log(f"[{i}/{n}] Cutting {seconds_to_ts(pick['start_sec'])}-{seconds_to_ts(pick['end_sec'])} -> {name}")
-        cut_clip(video, tmp_clip, pick["start_sec"], pick["end_sec"], opts.format, w, h)
+        cut_clip(src, out_dir / f"{name}.mp4", pick["start_sec"], pick["end_sec"], opts.format, w, h)
 
-        base = {
+        ig, yt = cm.instagram, cm.youtube
+        _write_json(out_dir / f"{name}.json", {
             "name": name,
+            "video_file": f"{name}.mp4",
             "clip_number": i,
             "working_title": pick["title"],
             "summary": cm.summary,
@@ -152,22 +213,21 @@ def _cut_and_save(video: Path, picks: list[dict], metas: dict[int, ClipMeta], me
             "format": opts.format,
             "source_video": meta,
             "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-            "uploaded": False,
-        }
-        ig, yt = cm.instagram, cm.youtube
-        targets = [
-            (insta_out, {**base, "platform": "instagram", "caption": ig.caption, "hashtags": ig.hashtags,
-                         "full_caption": f"{ig.caption}\n\n{' '.join(ig.hashtags)}"}),
-            (yt_out, {**base, "platform": "youtube", "title": yt.title, "description": yt.description,
-                      "tags": yt.tags, "hashtags": yt.hashtags,
-                      "full_description": f"{yt.description}\n\n{' '.join(yt.hashtags)}"}),
-        ]
-        for folder, data in targets:
-            shutil.copyfile(tmp_clip, folder / f"{name}.mp4")
-            data["video_file"] = f"{name}.mp4"
-            (folder / f"{name}.json").write_text(json.dumps(data, indent=2, ensure_ascii=False),
-                                                 encoding="utf-8")
-        tmp_clip.unlink(missing_ok=True)
+            "instagram": {
+                "caption": ig.caption,
+                "hashtags": ig.hashtags,
+                "full_caption": f"{ig.caption}\n\n{' '.join(ig.hashtags)}",
+                "uploaded": False,
+            },
+            "youtube": {
+                "title": yt.title,
+                "description": yt.description,
+                "tags": yt.tags,
+                "hashtags": yt.hashtags,
+                "full_description": f"{yt.description}\n\n{' '.join(yt.hashtags)}",
+                "uploaded": False,
+            },
+        })
         saved.append(name)
         progress("cut", i / n, f"{i} / {n}")
 

@@ -168,6 +168,8 @@ def main() -> None:
                     help="crop = centre-crop to 9:16, blur = full frame on blurred 9:16 background, "
                          "original = keep source aspect ratio")
     ap.add_argument("--fresh", action="store_true", help="Ignore saved clip picks and ask the LLM again")
+    ap.add_argument("--keep-source", action="store_true",
+                    help="Keep the downloaded source video (deleted after clipping by default)")
     ap.add_argument("--list-models", action="store_true", help="List models available at LLM_BASE_URL")
     args = ap.parse_args()
 
@@ -177,7 +179,8 @@ def main() -> None:
         client = llm.client()
         source = args.source or search_for_video(args.youtuber, args.topic, args.latest, client)
         opts = ClipOptions(min_clips=args.min_clips, max_clips=args.max_clips, min_len=args.min_len,
-                           max_len=args.max_len, format=args.format, fresh=args.fresh)
+                           max_len=args.max_len, format=args.format, fresh=args.fresh,
+                           keep_source=args.keep_source)
         pipeline.run(source, opts, client)
     except ClipperError as e:
         sys.exit(f"Error: {e}")

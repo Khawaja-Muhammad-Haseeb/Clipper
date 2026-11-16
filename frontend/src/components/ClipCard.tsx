@@ -32,7 +32,7 @@ function Chips({ items }: { items: string[] }) {
 
 export function ClipCard({ clip }: { clip: Clip }) {
   const [tab, setTab] = useState<Tab>("instagram");
-  const video = clip.instagram?.video || clip.youtube?.video;
+  const video = clip.video;
   const vertical = clip.format !== "original";
   const title = clip.youtube?.title || clip.working_title;
 
@@ -144,21 +144,14 @@ export function ClipCard({ clip }: { clip: Clip }) {
         </div>
 
         <footer className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-zinc-100 px-4 py-2.5 text-xs">
-          {clip.instagram?.video && (
-            <a className="font-medium text-zinc-700 hover:text-zinc-900 hover:underline" href={mediaUrl(clip.instagram.video)} download>
-              Download Instagram file
+          {clip.video && (
+            <a className="font-medium text-zinc-700 hover:text-zinc-900 hover:underline" href={mediaUrl(clip.video)} download>
+              Download video
             </a>
           )}
-          {clip.youtube?.video && (
-            <a className="font-medium text-zinc-700 hover:text-zinc-900 hover:underline" href={mediaUrl(clip.youtube.video)} download>
-              Download YouTube file
-            </a>
-          )}
-          {clip.instagram?.json && (
-            <a className="text-zinc-500 hover:text-zinc-900 hover:underline" href={mediaUrl(clip.instagram.json)} target="_blank" rel="noreferrer">
-              JSON
-            </a>
-          )}
+          <a className="text-zinc-500 hover:text-zinc-900 hover:underline" href={mediaUrl(clip.json)} target="_blank" rel="noreferrer">
+            JSON
+          </a>
           <span className="ml-auto truncate font-mono text-[11px] text-zinc-400">{clip.name}</span>
         </footer>
       </div>

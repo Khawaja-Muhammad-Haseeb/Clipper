@@ -46,6 +46,7 @@ export type JobRequest = {
   max_len: number;
   format: ClipFormat;
   fresh: boolean;
+  keep_source: boolean;
 };
 
 export type Stage = {
@@ -75,6 +76,7 @@ export type SourceVideo = {
   title?: string;
   channel?: string | null;
   url?: string | null;
+  source?: string | null;
 };
 
 export type Clip = {
@@ -91,12 +93,13 @@ export type Clip = {
   format: string;
   created_at: string;
   source_video: SourceVideo;
+  video: string | null;
+  json: string;
   instagram: {
     caption: string;
     hashtags: string[];
     full_caption: string;
-    video: string | null;
-    json: string | null;
+    uploaded: boolean;
   } | null;
   youtube: {
     title: string;
@@ -104,8 +107,7 @@ export type Clip = {
     tags: string[];
     hashtags: string[];
     full_description: string;
-    video: string | null;
-    json: string | null;
+    uploaded: boolean;
   } | null;
 };
 
@@ -123,6 +125,7 @@ export type LibraryDetail = {
   slug: string;
   title: string;
   source_video: SourceVideo;
+  can_reclip: boolean;
   clips: Clip[];
 };
 

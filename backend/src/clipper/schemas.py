@@ -18,6 +18,7 @@ class ClipOptions:
     max_len: int = 60       # seconds
     format: ClipFormat = "crop"
     fresh: bool = False     # ignore cached clip picks
+    keep_source: bool = False  # keep the downloaded / uploaded source video after clipping
 
     def __post_init__(self) -> None:
         self.max_clips = max(self.min_clips, self.max_clips)

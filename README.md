@@ -1,6 +1,6 @@
 # Clipper
 
-Long video → Whisper transcript → open-source LLM picks the best moments → ffmpeg cuts them (snapped to sentence boundaries) → LLM writes captions → saved to `data/insta_vid/` and `data/yt_vids/`.
+Long video → Whisper transcript → open-source LLM picks the best moments → ffmpeg cuts them (snapped to sentence boundaries) → LLM writes captions → saved to `data/clips/`.
 
 ## Project layout
 
@@ -9,10 +9,11 @@ Clipper/
 ├── backend/                      Python package (CLI + API)
 │   ├── pyproject.toml            dependencies and the `clipper` / `clipper-server` commands
 │   ├── .env                      your keys and settings (from .env.example)
+│   ├── scripts/                  one-off maintenance scripts
 │   └── src/clipper/
 │       ├── config.py             paths and settings from .env
 │       ├── pipeline.py           download → transcribe → pick → captions → cut & save
-│       ├── youtube.py            yt-dlp: channel search, video lists, downloads
+│       ├── youtube.py            yt-dlp: channel search, video info, downloads
 │       ├── transcribe.py         Whisper (Groq API or local faster-whisper)
 │       ├── llm.py                OpenAI-compatible client, JSON parsing, model fallback
 │       ├── analysis.py           LLM prompts: topic check, clip picking, captions
@@ -29,10 +30,9 @@ Clipper/
 │           └── routes/           system, search, jobs, library
 ├── frontend/                     Next.js UI (built to frontend/out, served by the API)
 └── data/                         generated, gitignored
-    ├── downloads/                source videos
-    ├── work/                     cached transcripts and clip picks
-    ├── insta_vid/                Instagram clips + JSON
-    └── yt_vids/                  YouTube clips + JSON
+    ├── downloads/                source videos (temporary, deleted after clipping)
+    ├── work/<video>/             transcript, clip picks, source info (kept, tiny)
+    └── clips/<video>/            clip_XX_<name>.mp4 + .json (Instagram + YouTube metadata)
 ```
 
 ## Setup (once)
@@ -91,18 +91,34 @@ If no video matches, you can switch YouTuber, change the topic, or inspect older
 | `--min-len / --max-len` | 20 / 60 | Clip length in seconds |
 | `--format` | `crop` | `crop` (9:16 centre crop), `blur` (full frame on blurred 9:16 background), `original` |
 | `--fresh` | off | Ask the LLM for new clips instead of reusing saved picks |
+| `--keep-source` | off | Keep the downloaded source video instead of deleting it after clipping |
 | `--list-models` | | List models at `LLM_BASE_URL` (free ones only, for OpenRouter) |
 
 ## Output
 
 ```
-data/insta_vid/<video_title>/clip_01_<name>.mp4  + .json   (caption, hashtags, full_caption)
-data/yt_vids/<video_title>/clip_01_<name>.mp4    + .json   (title, description, tags, hashtags)
+data/clips/<video_title>/clip_01_<name>.mp4
+data/clips/<video_title>/clip_01_<name>.json
 ```
 
-Each JSON also holds timestamps, the exact transcript, hook, source video info and `uploaded: false`. Re-running a video replaces its clips.
+One video file per clip, used for both platforms. The JSON holds:
+- `instagram`: `caption`, `hashtags`, `full_caption`, `uploaded`
+- `youtube`: `title`, `description`, `tags`, `hashtags`, `full_description`, `uploaded`
+- timestamps, the exact transcript, hook, reason and source video info
 
-`data/work/<video_title>/` caches `transcript.json` and `clip_picks.json`. Re-running a video skips transcription, and also skips clip picking unless you pass `--fresh`. You can hand-edit the clip times in `clip_picks.json`.
+Re-running a video replaces its clips.
+
+### Source videos and re-clipping
+
+The downloaded (or uploaded) source video is **deleted after clipping** unless you use `--keep-source` / "Keep source video". Your own local files passed by path are never deleted.
+
+`data/work/<video_title>/` keeps `transcript.json`, `clip_picks.json` and `source.json` (a few KB). To get **different clips** from a video later, use **Make new clips** in the Library, or `clipper "<url>" --fresh`:
+
+1. The saved transcript is reused (no transcription).
+2. The LLM picks new clips and writes captions from the transcript.
+3. Only then is the video downloaded again, cut, and deleted.
+
+Uploaded files can't be re-downloaded, so upload them again to re-clip.
 
 ## API usage per video
 

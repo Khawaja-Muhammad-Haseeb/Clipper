@@ -16,11 +16,10 @@ load_dotenv(BACKEND_DIR / ".env")
 
 # ---- Data folders -----------------------------------------------------------
 DATA_DIR = Path(os.getenv("CLIPPER_DATA_DIR") or PROJECT_ROOT / "data").resolve()
-DOWNLOADS_DIR = DATA_DIR / "downloads"   # source videos
-UPLOADS_DIR = DOWNLOADS_DIR / "uploads"  # files uploaded through the UI
-WORK_DIR = DATA_DIR / "work"             # cached transcripts and clip picks
-INSTA_DIR = DATA_DIR / "insta_vid"       # Instagram clips + JSON
-YT_DIR = DATA_DIR / "yt_vids"            # YouTube clips + JSON
+DOWNLOADS_DIR = DATA_DIR / "downloads"   # source videos (temporary: deleted after clipping)
+UPLOADS_DIR = DOWNLOADS_DIR / "uploads"  # files uploaded through the UI (temporary too)
+WORK_DIR = DATA_DIR / "work"             # kept: transcript, clip picks, source info per video
+CLIPS_DIR = DATA_DIR / "clips"           # kept: clip_XX.mp4 + clip_XX.json (Instagram + YouTube metadata)
 
 # ---- Transcription ----------------------------------------------------------
 # "groq" = free Groq Whisper API (fast); "local" = faster-whisper on the CPU (unlimited, slow)

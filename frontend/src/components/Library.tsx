@@ -5,7 +5,7 @@ import { api, type LibraryDetail, type LibraryItem } from "@/lib/api";
 import { ClipList } from "./ClipCard";
 import { Alert, Button, EmptyState, Spinner, cx } from "./ui";
 
-export function Library({ initialSlug }: { initialSlug?: string | null }) {
+export function Library({ initialSlug, onReclip }: { initialSlug?: string | null; onReclip: (source: string) => void }) {
   const [items, setItems] = useState<LibraryItem[] | null>(null);
   const [selected, setSelected] = useState<string | null>(initialSlug ?? null);
   const [detail, setDetail] = useState<LibraryDetail | null>(null);
@@ -97,16 +97,27 @@ export function Library({ initialSlug }: { initialSlug?: string | null }) {
                   {detail.clips.length} clips
                 </p>
               </div>
-              {detail.source_video.url && (
-                <a
-                  href={detail.source_video.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-xs font-medium text-zinc-600 hover:text-zinc-900 hover:underline"
-                >
-                  Open source video
-                </a>
-              )}
+              <div className="flex items-center gap-3">
+                {detail.source_video.url && (
+                  <a
+                    href={detail.source_video.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-xs font-medium text-zinc-600 hover:text-zinc-900 hover:underline"
+                  >
+                    Open source video
+                  </a>
+                )}
+                {detail.can_reclip && (
+                  <Button
+                    size="sm"
+                    title="Uses the saved transcript. The video is downloaded again only for cutting."
+                    onClick={() => onReclip(detail.source_video.source || detail.source_video.url || "")}
+                  >
+                    Make new clips
+                  </Button>
+                )}
+              </div>
             </div>
             <ClipList clips={detail.clips} />
           </>

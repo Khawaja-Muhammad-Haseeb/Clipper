@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from urllib.parse import quote_plus
@@ -10,8 +11,9 @@ from urllib.parse import quote_plus
 import yt_dlp
 
 from clipper import config
+from clipper.errors import ClipperError
 from clipper.media import FFMPEG
-from clipper.reporting import log, progress
+from clipper.reporting import log
 from clipper.utils import slugify
 
 _BASE = {"quiet": True, "no_warnings": True, "noprogress": True}
@@ -93,21 +95,59 @@ def latest_videos(channel: dict, start: int, count: int) -> list[dict]:
     return [v for v in videos if v["live_status"] not in ("is_upcoming", "is_live")]
 
 
-# ---- Download ---------------------------------------------------------------
-def download(url: str) -> tuple[Path, dict]:
+# ---- Source videos ----------------------------------------------------------
+def resolve(source: str) -> tuple[Path | None, dict]:
+    """Identify a source without downloading it.
+
+    Returns (local_path_or_None, meta). local_path is set for a local file, or for a
+    YouTube video that is still in data/downloads from an earlier run."""
+    local = Path(source.strip().strip('"'))
+    if local.exists():
+        from clipper.media import probe
+
+        duration, _, _ = probe(local)
+        return local.resolve(), {"id": slugify(local.stem), "title": local.stem, "channel": None,
+                                 "url": None, "description": "", "duration": duration,
+                                 "source": str(local.resolve())}
+    if "://" not in source:
+        raise ClipperError(f"File not found: {source}. Uploaded files are deleted after clipping, "
+                           "so upload it again.")
+    with yt_dlp.YoutubeDL({**_BASE, "noplaylist": True}) as ydl:
+        info = ydl.extract_info(source, download=False)
+    meta = {
+        "id": info.get("id"),
+        "title": info.get("title"),
+        "channel": info.get("channel") or info.get("uploader"),
+        "url": info.get("webpage_url") or source,
+        "description": (info.get("description") or "")[:1500],
+        "duration": info.get("duration"),
+        "source": info.get("webpage_url") or source,
+    }
+    cached = config.DOWNLOADS_DIR / f"{meta['id']}.mp4"
+    return (cached if cached.exists() else None), meta
+
+
+def download(url: str, video_id: str,
+             on_progress: Callable[[float, str | None], None] | None = None) -> Path:
+    """Download to data/downloads/<id>.mp4 (skipped if already there)."""
     config.DOWNLOADS_DIR.mkdir(parents=True, exist_ok=True)
+    path = config.DOWNLOADS_DIR / f"{video_id}.mp4"
+    if path.exists():
+        return path
     finished: set[str] = set()
 
     def hook(d):
+        if on_progress is None:
+            return
         # Video and audio arrive as two files; report the average of both.
         if d["status"] == "finished":
             finished.add(d.get("filename", ""))
-            progress("download", min(1.0, len(finished) / 2))
+            on_progress(min(1.0, len(finished) / 2), None)
         elif d["status"] == "downloading":
             total = d.get("total_bytes") or d.get("total_bytes_estimate") or 0
             frac = (d.get("downloaded_bytes", 0) / total) if total else 0
             speed = (d.get("_speed_str") or "").strip()
-            progress("download", min(0.99, (len(finished) + frac) / 2), speed or None)
+            on_progress(min(0.99, (len(finished) + frac) / 2), speed or None)
 
     opts = {
         **_BASE,
@@ -118,27 +158,9 @@ def download(url: str) -> tuple[Path, dict]:
         "ffmpeg_location": FFMPEG,
         "noplaylist": True,
     }
+    log("Downloading source video...")
     with yt_dlp.YoutubeDL(opts) as ydl:
-        info = ydl.extract_info(url, download=False)
-        path = config.DOWNLOADS_DIR / f"{info['id']}.mp4"
-        if path.exists():
-            log(f"Already downloaded: {path.name}")
-        else:
-            log(f"Downloading: {info.get('title')}")
-            ydl.download([url])
-    return path, {
-        "id": info.get("id"),
-        "title": info.get("title"),
-        "channel": info.get("channel") or info.get("uploader"),
-        "url": info.get("webpage_url") or url,
-        "description": (info.get("description") or "")[:1500],
-    }
-
-
-def get_video(source: str) -> tuple[Path, dict]:
-    """A local file path, or anything yt-dlp can download."""
-    local = Path(source)
-    if local.exists():
-        return local.resolve(), {"id": slugify(local.stem), "title": local.stem,
-                                 "channel": None, "url": None, "description": ""}
-    return download(source)
+        ydl.download([url])
+    if not path.exists():
+        raise ClipperError("Download finished but the video file is missing.")
+    return path
