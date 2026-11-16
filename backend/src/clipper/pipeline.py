@@ -22,9 +22,9 @@ from pathlib import Path
 
 from openai import OpenAI
 
-from clipper import analysis, config, llm, youtube
+from clipper import analysis, backgrounds, config, llm, youtube
 from clipper.errors import ClipperError
-from clipper.media import cut_clip, probe
+from clipper.media import cut_clip, needs_background, probe
 from clipper.reporting import log, progress
 from clipper.schemas import ClipMeta, ClipOptions, ClipPick
 from clipper.transcribe import Segment, format_for_llm, transcribe
@@ -71,6 +71,8 @@ class SourceVideo:
 def run(source: str, opts: ClipOptions, client: OpenAI | None = None) -> dict:
     """Process one video. Returns {"slug", "title", "clips": [clip names]}."""
     client = client or llm.client()
+    if needs_background(opts.format):
+        backgrounds.Picker()  # fail now, not after downloading and transcribing, if there are none
 
     progress("download", None, "Reading video info")
     path, meta = youtube.resolve(source)
@@ -180,6 +182,8 @@ def _cut_and_save(video: SourceVideo, picks: list[dict], metas: dict[int, ClipMe
     src = video.get("cut")
     _, w, h = probe(src)
 
+    picker = backgrounds.Picker() if needs_background(opts.format) else None
+
     out_dir = config.CLIPS_DIR / slug
     if out_dir.exists():  # re-running a video replaces its clips
         shutil.rmtree(out_dir)
@@ -195,7 +199,10 @@ def _cut_and_save(video: SourceVideo, picks: list[dict], metas: dict[int, ClipMe
         short = re.sub(r"^(clip_?\d*_?)+", "", slugify(cm.name, 60)) or "clip"
         name = f"clip_{i:02d}_{short[:40].strip('_')}"
         log(f"[{i}/{n}] Cutting {seconds_to_ts(pick['start_sec'])}-{seconds_to_ts(pick['end_sec'])} -> {name}")
-        cut_clip(src, out_dir / f"{name}.mp4", pick["start_sec"], pick["end_sec"], opts.format, w, h)
+        bg = picker.next(pick["end_sec"] - pick["start_sec"]) if picker else None
+        if bg:
+            log(f"    background: {bg[0].stem} from {seconds_to_ts(bg[1])}")
+        cut_clip(src, out_dir / f"{name}.mp4", pick["start_sec"], pick["end_sec"], opts.format, w, h, bg)
 
         ig, yt = cm.instagram, cm.youtube
         _write_json(out_dir / f"{name}.json", {
@@ -211,6 +218,7 @@ def _cut_and_save(video: SourceVideo, picks: list[dict], metas: dict[int, ClipMe
             "end": seconds_to_ts(pick["end_sec"]),
             "duration_sec": round(pick["end_sec"] - pick["start_sec"], 2),
             "format": opts.format,
+            "background": {"id": bg[0].stem, "start_sec": round(bg[1], 1)} if bg else None,
             "source_video": meta,
             "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "instagram": {

@@ -5,6 +5,7 @@ App factory and entry point.
 
   /api/...      JSON API
   /media/clips  generated clips (data/clips)
+  /media/backgrounds  background videos (data/backgrounds)
   /             built frontend (frontend/out), if present
 """
 
@@ -15,7 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from clipper import __version__, config
-from clipper.api.routes import jobs, library, search, system
+from clipper.api.routes import backgrounds, jobs, library, search, system
 
 
 def create_app() -> FastAPI:
@@ -23,11 +24,13 @@ def create_app() -> FastAPI:
     app.add_middleware(CORSMiddleware, allow_origins=config.CORS_ORIGINS,
                        allow_methods=["*"], allow_headers=["*"])
 
-    for router in (system.router, search.router, jobs.router, library.router):
+    for router in (system.router, search.router, jobs.router, library.router, backgrounds.router):
         app.include_router(router, prefix="/api")
 
-    config.CLIPS_DIR.mkdir(parents=True, exist_ok=True)
+    for folder in (config.CLIPS_DIR, config.BACKGROUNDS_DIR):
+        folder.mkdir(parents=True, exist_ok=True)
     app.mount("/media/clips", StaticFiles(directory=config.CLIPS_DIR), name="clips")
+    app.mount("/media/backgrounds", StaticFiles(directory=config.BACKGROUNDS_DIR), name="backgrounds")
 
     # Must be mounted last: it catches every path not matched above.
     if config.FRONTEND_DIST.exists():

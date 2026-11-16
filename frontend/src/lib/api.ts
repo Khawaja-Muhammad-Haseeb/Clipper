@@ -6,6 +6,7 @@ export type Config = {
   llm_key_set: boolean;
   transcribe: string;
   groq_key_set: boolean;
+  background_count: number;
 };
 
 export type Channel = {
@@ -36,7 +37,28 @@ export type VideoPage = {
   end_of_channel: boolean;
 };
 
-export type ClipFormat = "crop" | "blur" | "original";
+export type ClipFormat = "crop" | "blur" | "original" | "background" | "split";
+
+export type Background = {
+  id: string;
+  file: string;
+  thumb: string | null;
+  title: string;
+  channel: string | null;
+  url: string | null;
+  duration: number | null;
+  added: string | null;
+  size_mb: number;
+};
+
+export type BackgroundTask = {
+  running: boolean;
+  done: number;
+  total: number;
+  current: string | null;
+  error: string | null;
+  added: number;
+};
 
 export type JobRequest = {
   source: string;
@@ -91,6 +113,7 @@ export type Clip = {
   end: string;
   duration_sec: number;
   format: string;
+  background?: { id: string; start_sec: number } | null;
   created_at: string;
   source_video: SourceVideo;
   video: string | null;
@@ -171,6 +194,16 @@ export const api = {
   currentJob: () => request<Job | null>("/api/jobs/current"),
   library: () => request<{ items: LibraryItem[] }>("/api/library"),
   libraryItem: (slug: string) => request<LibraryDetail>(`/api/library/${encodeURIComponent(slug)}`),
+  backgrounds: () => request<{ items: Background[]; task: BackgroundTask }>("/api/backgrounds"),
+  backgroundStatus: () => request<BackgroundTask>("/api/backgrounds/status"),
+  downloadBackgrounds: (count: number) => post<BackgroundTask>("/api/backgrounds/download", { count }),
+  addBackgroundLink: (url: string) => post<BackgroundTask>("/api/backgrounds/youtube", { url }),
+  uploadBackground: (file: File) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return request<{ id: string }>("/api/backgrounds/upload", { method: "POST", body: fd });
+  },
+  deleteBackground: (id: string) => request<{ ok: boolean }>(`/api/backgrounds/${encodeURIComponent(id)}`, { method: "DELETE" }),
 };
 
 export const mediaUrl = (path: string | null | undefined) => (path ? `${API}${path}` : "");

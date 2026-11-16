@@ -164,18 +164,27 @@ def main() -> None:
     ap.add_argument("--max-clips", type=int, default=7)
     ap.add_argument("--min-len", type=int, default=20, help="Minimum clip length in seconds")
     ap.add_argument("--max-len", type=int, default=60, help="Maximum clip length in seconds")
-    ap.add_argument("--format", choices=["crop", "blur", "original"], default="crop",
-                    help="crop = centre-crop to 9:16, blur = full frame on blurred 9:16 background, "
-                         "original = keep source aspect ratio")
+    ap.add_argument("--format", choices=["crop", "blur", "original", "background", "split"], default="crop",
+                    help="crop = centre-crop to 9:16 | blur = full frame on a blurred copy of itself | "
+                         "background = full frame on a random blurred background video | "
+                         "split = full frame on top, random background video below | original = unchanged")
     ap.add_argument("--fresh", action="store_true", help="Ignore saved clip picks and ask the LLM again")
     ap.add_argument("--keep-source", action="store_true",
                     help="Keep the downloaded source video (deleted after clipping by default)")
     ap.add_argument("--list-models", action="store_true", help="List models available at LLM_BASE_URL")
+    ap.add_argument("--download-backgrounds", type=int, metavar="N",
+                    help="Download N random free-to-use background videos (~2 min each) and exit")
     args = ap.parse_args()
 
     try:
         if args.list_models:
             return print_models()
+        if args.download_backgrounds:
+            from clipper import backgrounds
+
+            added = backgrounds.download_random(args.download_backgrounds)
+            print(f"Added {len(added)} backgrounds. Total: {len(backgrounds.list_all())}")
+            return
         client = llm.client()
         source = args.source or search_for_video(args.youtuber, args.topic, args.latest, client)
         opts = ClipOptions(min_clips=args.min_clips, max_clips=args.max_clips, min_len=args.min_len,

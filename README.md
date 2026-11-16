@@ -17,7 +17,8 @@ Clipper/
 │       ├── transcribe.py         Whisper (Groq API or local faster-whisper)
 │       ├── llm.py                OpenAI-compatible client, JSON parsing, model fallback
 │       ├── analysis.py           LLM prompts: topic check, clip picking, captions
-│       ├── media.py              ffmpeg: probe, audio extraction, clip cutting
+│       ├── media.py              ffmpeg: probe, audio extraction, cutting, layouts
+│       ├── backgrounds.py        background videos: download, add, random picking
 │       ├── library.py            reads generated clips back from disk
 │       ├── schemas.py            ClipOptions and LLM response models
 │       ├── reporting.py          logging and per-stage progress
@@ -32,7 +33,8 @@ Clipper/
 └── data/                         generated, gitignored
     ├── downloads/                source videos (temporary, deleted after clipping)
     ├── work/<video>/             transcript, clip picks, source info (kept, tiny)
-    └── clips/<video>/            clip_XX_<name>.mp4 + .json (Instagram + YouTube metadata)
+    ├── clips/<video>/            clip_XX_<name>.mp4 + .json (Instagram + YouTube metadata)
+    └── backgrounds/              background videos (~2 min each) + .json source info
 ```
 
 ## Setup (once)
@@ -61,6 +63,7 @@ ffmpeg is bundled through `imageio-ffmpeg`; nothing else to install. Set `CLIPPE
 
 - **New job**: search a YouTuber and topic (or paste a link, file path or upload a file), set clip options, generate. Progress is shown for each stage: download, transcribe, pick clips, captions, cut.
 - **Library** (`/#library`): every processed video with its clips, a player, Instagram and YouTube captions with copy buttons, transcript and download links.
+- **Backgrounds** (`/#backgrounds`): download random free-to-use background videos, add one from a YouTube link or upload a file, preview and remove them.
 
 Only one job runs at a time. Refreshing the page while a job runs picks its progress back up.
 
@@ -89,10 +92,27 @@ If no video matches, you can switch YouTuber, change the topic, or inspect older
 | `--latest` | 5 | Search mode: how many recent videos to check per page |
 | `--min-clips / --max-clips` | 5 / 7 | How many clips to ask for |
 | `--min-len / --max-len` | 20 / 60 | Clip length in seconds |
-| `--format` | `crop` | `crop` (9:16 centre crop), `blur` (full frame on blurred 9:16 background), `original` |
+| `--format` | `crop` | see **Formats** below |
 | `--fresh` | off | Ask the LLM for new clips instead of reusing saved picks |
 | `--keep-source` | off | Keep the downloaded source video instead of deleting it after clipping |
 | `--list-models` | | List models at `LLM_BASE_URL` (free ones only, for OpenRouter) |
+| `--download-backgrounds N` | | Download N random free-to-use background videos and exit |
+
+## Formats
+
+All formats except `original` produce a 1080×1920 (9:16) video for Shorts / Reels.
+
+| Format | Layout |
+|---|---|
+| `crop` | Centre crop to 9:16. Cuts off the sides of a 16:9 video. |
+| `blur` | Whole clip at full width, over a blurred copy of itself. |
+| `background` | Whole clip at full width, centred over a random **blurred background video**. |
+| `split` | Whole clip at full width in the top half (gaps filled with its own blur), random **background video** in the bottom half. |
+| `original` | Unchanged aspect ratio. |
+
+For `background` and `split`, every clip gets a different random background (no repeats until all have been used), starting at a random point and cut to exactly the clip's length. A background shorter than the clip loops. Background audio is muted.
+
+Backgrounds live in `data/backgrounds/`. `clipper --download-backgrounds 12` (or the Backgrounds page) searches YouTube for gameplay / satisfying videos whose titles say *no copyright* / *free to use* and downloads a random 2 minute, 720p, video-only section of each. That label is the uploader's claim; check the source link if unsure.
 
 ## Output
 

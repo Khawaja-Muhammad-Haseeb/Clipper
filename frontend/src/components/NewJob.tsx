@@ -18,14 +18,54 @@ import { JobProgress } from "./JobProgress";
 import { Alert, Badge, Button, Card, EmptyState, Field, Input, Segmented, Spinner, cx } from "./ui";
 
 type Mode = "search" | "direct";
+type PlainFormat = "crop" | "blur" | "original";
+type Layout = "background" | "split";
 
 const FORMAT_HINT: Record<ClipFormat, string> = {
-  crop: "Centre-crop to 9:16. Best for a single speaker.",
-  blur: "Full frame on a blurred 9:16 background. Best for two-person shots.",
+  crop: "Centre-crop to 9:16. Best for a single speaker. Cuts off the sides.",
+  blur: "Full frame, full width, on a blurred copy of itself.",
   original: "Keep the original aspect ratio.",
+  background: "Full clip, full width, centred over a blurred background video.",
+  split: "Full clip in the top half, background video in the bottom half.",
 };
 
-export function NewJob({ onOpenLibrary, initialSource }: { onOpenLibrary: (slug: string) => void; initialSource?: string }) {
+function LayoutOption({ value, selected, onSelect }: { value: Layout; selected: boolean; onSelect: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className={cx(
+        "flex items-center gap-3 rounded-md border p-2.5 text-left transition-colors",
+        selected ? "border-zinc-900 ring-1 ring-zinc-900" : "border-zinc-200 hover:border-zinc-300 hover:bg-zinc-50",
+      )}
+    >
+      {/* Mini 9:16 diagram: dark = your clip, grey = background video */}
+      {value === "background" ? (
+        <span className="relative flex h-[56px] w-8 shrink-0 items-center overflow-hidden rounded-sm bg-zinc-300">
+          <span className="h-[18px] w-full bg-zinc-800" />
+        </span>
+      ) : (
+        <span className="flex h-[56px] w-8 shrink-0 flex-col overflow-hidden rounded-sm">
+          <span className="flex flex-1 items-center bg-zinc-200">
+            <span className="h-[18px] w-full bg-zinc-800" />
+          </span>
+          <span className="flex-1 bg-zinc-400" />
+        </span>
+      )}
+      <span className="text-xs font-medium text-zinc-900">{value === "background" ? "Blurred background" : "Split screen"}</span>
+    </button>
+  );
+}
+
+export function NewJob({
+  onOpenLibrary,
+  initialSource,
+  backgroundCount,
+}: {
+  onOpenLibrary: (slug: string) => void;
+  initialSource?: string;
+  backgroundCount: number | null;
+}) {
   // Source (a re-clip from the Library opens this with the source pre-filled)
   const [mode, setMode] = useState<Mode>(initialSource ? "direct" : "search");
   const [youtuber, setYoutuber] = useState("");
@@ -49,7 +89,11 @@ export function NewJob({ onOpenLibrary, initialSource }: { onOpenLibrary: (slug:
   const [maxClips, setMaxClips] = useState(7);
   const [minLen, setMinLen] = useState(20);
   const [maxLen, setMaxLen] = useState(60);
-  const [format, setFormat] = useState<ClipFormat>("crop");
+  const [plainFormat, setPlainFormat] = useState<PlainFormat>("crop");
+  const [useBackground, setUseBackground] = useState(false);
+  const [layout, setLayout] = useState<Layout>("background");
+  const hasBackgrounds = (backgroundCount ?? 0) > 0;
+  const format: ClipFormat = useBackground && hasBackgrounds ? layout : plainFormat;
   const [fresh, setFresh] = useState(Boolean(initialSource));
   const [keepSource, setKeepSource] = useState(false);
 
@@ -259,19 +303,46 @@ export function NewJob({ onOpenLibrary, initialSource }: { onOpenLibrary: (slug:
               <Input type="number" min={5} max={600} value={maxLen} onChange={(e) => setMaxLen(Number(e.target.value) || 5)} />
             </Field>
           </div>
-          <div className="mt-4">
-            <span className="mb-1.5 block text-xs font-medium text-zinc-700">Format</span>
-            <Segmented<ClipFormat>
-              value={format}
-              onChange={setFormat}
-              options={[
-                { value: "crop", label: "Crop 9:16" },
-                { value: "blur", label: "Blur 9:16" },
-                { value: "original", label: "Original" },
-              ]}
-            />
-            <p className="mt-1.5 text-xs text-zinc-500">{FORMAT_HINT[format]}</p>
+          <div className="mt-4 rounded-md border border-zinc-200 p-3">
+            <label className={cx("flex items-start gap-2.5", hasBackgrounds ? "cursor-pointer" : "cursor-not-allowed")}>
+              <input
+                type="checkbox"
+                checked={useBackground && hasBackgrounds}
+                disabled={!hasBackgrounds}
+                onChange={(e) => setUseBackground(e.target.checked)}
+                className="mt-0.5 h-4 w-4 rounded border-zinc-300 accent-zinc-900"
+              />
+              <span>
+                <span className="block text-sm text-zinc-900">Add a background video</span>
+                <span className="block text-xs text-zinc-500">
+                  {hasBackgrounds
+                    ? `Each clip gets a random one of your ${backgroundCount} backgrounds, cut to the clip's length.`
+                    : "No backgrounds yet. Add some on the Backgrounds page."}
+                </span>
+              </span>
+            </label>
+            {useBackground && hasBackgrounds && (
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <LayoutOption value="background" selected={layout === "background"} onSelect={() => setLayout("background")} />
+                <LayoutOption value="split" selected={layout === "split"} onSelect={() => setLayout("split")} />
+              </div>
+            )}
           </div>
+          {!(useBackground && hasBackgrounds) && (
+            <div className="mt-4">
+              <span className="mb-1.5 block text-xs font-medium text-zinc-700">Format</span>
+              <Segmented<PlainFormat>
+                value={plainFormat}
+                onChange={setPlainFormat}
+                options={[
+                  { value: "crop", label: "Crop 9:16" },
+                  { value: "blur", label: "Blur 9:16" },
+                  { value: "original", label: "Original" },
+                ]}
+              />
+            </div>
+          )}
+          <p className="mt-1.5 text-xs text-zinc-500">{FORMAT_HINT[format]}</p>
           <label className="mt-4 flex cursor-pointer items-start gap-2.5">
             <input
               type="checkbox"

@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { api, type Config } from "@/lib/api";
+import { Backgrounds } from "@/components/Backgrounds";
 import { Library } from "@/components/Library";
 import { NewJob } from "@/components/NewJob";
 import { cx } from "@/components/ui";
 
-type View = "new" | "library";
+type View = "new" | "library" | "backgrounds";
 
 const subscribeHash = (cb: () => void) => {
   window.addEventListener("hashchange", cb);
@@ -19,9 +20,9 @@ function shortModel(m: string) {
 
 export default function Home() {
   const hash = useSyncExternalStore(subscribeHash, () => window.location.hash, () => "");
-  const view: View = hash === "#library" ? "library" : "new";
+  const view: View = hash === "#library" ? "library" : hash === "#backgrounds" ? "backgrounds" : "new";
   const setView = (v: View) => {
-    window.location.assign(v === "library" ? "#library" : "#");
+    window.location.assign(v === "new" ? "#" : `#${v}`);
   };
   const [librarySlug, setLibrarySlug] = useState<string | null>(null);
   // Re-clip request from the Library: remounts NewJob with the source pre-filled.
@@ -29,9 +30,16 @@ export default function Home() {
   const [config, setConfig] = useState<Config | null>(null);
   const [offline, setOffline] = useState(false);
 
-  useEffect(() => {
-    api.config().then(setConfig).catch(() => setOffline(true));
+  const loadConfig = useCallback(() => {
+    api
+      .config()
+      .then((c) => {
+        setConfig(c);
+        setOffline(false);
+      })
+      .catch(() => setOffline(true));
   }, []);
+  useEffect(loadConfig, [loadConfig]);
 
   const missing = config && [!config.llm_key_set && "LLM_API_KEY", config.transcribe === "groq" && !config.groq_key_set && "GROQ_API_KEY", !config.llm_models.length && "LLM_MODEL"].filter(Boolean);
 
@@ -51,6 +59,7 @@ export default function Home() {
               [
                 ["new", "New job"],
                 ["library", "Library"],
+                ["backgrounds", "Backgrounds"],
               ] as [View, string][]
             ).map(([key, label]) => (
               <button
@@ -104,6 +113,7 @@ export default function Home() {
           <NewJob
             key={reclip?.n ?? 0}
             initialSource={reclip?.source}
+            backgroundCount={config?.background_count ?? null}
             onOpenLibrary={(slug) => {
               setLibrarySlug(slug);
               setView("library");
@@ -120,6 +130,7 @@ export default function Home() {
             }}
           />
         )}
+        {view === "backgrounds" && <Backgrounds onChange={loadConfig} />}
       </main>
     </div>
   );

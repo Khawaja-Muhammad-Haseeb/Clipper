@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from clipper import config
+from clipper import backgrounds, config
 
 router = APIRouter(tags=["system"])
 
@@ -13,4 +13,5 @@ def get_config():
         "llm_key_set": bool(config.LLM_API_KEY),
         "transcribe": config.TRANSCRIBE,
         "groq_key_set": bool(config.GROQ_API_KEY),
+        "background_count": len(backgrounds.list_all()),
     }

@@ -7,7 +7,7 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-ClipFormat = Literal["crop", "blur", "original"]
+ClipFormat = Literal["crop", "blur", "original", "background", "split"]
 
 
 @dataclass

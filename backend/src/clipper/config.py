@@ -20,6 +20,7 @@ DOWNLOADS_DIR = DATA_DIR / "downloads"   # source videos (temporary: deleted aft
 UPLOADS_DIR = DOWNLOADS_DIR / "uploads"  # files uploaded through the UI (temporary too)
 WORK_DIR = DATA_DIR / "work"             # kept: transcript, clip picks, source info per video
 CLIPS_DIR = DATA_DIR / "clips"           # kept: clip_XX.mp4 + clip_XX.json (Instagram + YouTube metadata)
+BACKGROUNDS_DIR = DATA_DIR / "backgrounds"  # background videos for the background / split layouts
 
 # ---- Transcription ----------------------------------------------------------
 # "groq" = free Groq Whisper API (fast); "local" = faster-whisper on the CPU (unlimited, slow)
