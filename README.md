@@ -18,7 +18,25 @@ Fill in `.env` (template: `.env.example`):
 
 ffmpeg is bundled through `imageio-ffmpeg`; nothing else to install.
 
-## Run
+## Web UI
+
+One-time setup: build the frontend (requires Node.js).
+```powershell
+cd frontend; npm install; npm run build; cd ..
+```
+Then start everything with one command and open http://127.0.0.1:8000:
+```powershell
+.venv\Scripts\python server.py
+```
+
+- **New job**: search a YouTuber and topic (or paste a link, file path or upload a file), set clip options, generate. Progress is shown for each stage: download, transcribe, pick clips, captions, cut.
+- **Library** (`/#library`): every processed video with its clips, a player, Instagram and YouTube captions with copy buttons, transcript and download links.
+
+Only one job runs at a time. Refreshing the page while a job runs picks its progress back up.
+
+**Developing the UI:** run `server.py`, and in another terminal run `cd frontend; npm run dev`, then open http://localhost:3000. It hot-reloads and talks to the API on :8000.
+
+## Command line
 
 **Search mode:** give a YouTuber and a topic. It checks their latest videos, you pick one, and it gets clipped.
 ```powershell

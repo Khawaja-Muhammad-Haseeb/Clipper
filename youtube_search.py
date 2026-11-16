@@ -66,6 +66,8 @@ def _details(video_id: str, fallback: dict) -> dict:
         "upload_date": i.get("upload_date"),
         "duration": i.get("duration") or fallback.get("duration"),
         "live_status": i.get("live_status"),
+        "view_count": i.get("view_count") or fallback.get("view_count"),
+        "thumbnail": f"https://i.ytimg.com/vi/{video_id}/mqdefault.jpg",
     }
 
 

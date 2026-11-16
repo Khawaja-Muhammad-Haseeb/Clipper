@@ -4,3 +4,6 @@ yt-dlp
 imageio-ffmpeg
 python-dotenv
 pydantic>=2
+fastapi
+uvicorn[standard]
+python-multipart

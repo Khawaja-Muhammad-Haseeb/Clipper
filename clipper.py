@@ -20,6 +20,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import contextvars
 import json
 import os
 import re
@@ -116,8 +117,21 @@ class TopicMatches(BaseModel):
 # --------------------------------------------------------------------------- #
 # Helpers
 # --------------------------------------------------------------------------- #
+# Optional progress reporter (used by the web UI). Set per thread via REPORTER.set(obj);
+# obj needs .log(msg) and .progress(stage, fraction_or_None, detail_or_None).
+# Stages: download, transcribe, pick, captions, cut
+REPORTER: contextvars.ContextVar = contextvars.ContextVar("reporter", default=None)
+
+
 def log(msg: str) -> None:
     print(f"[{datetime.now():%H:%M:%S}] {msg}", flush=True)
+    if (r := REPORTER.get()) is not None:
+        r.log(msg)
+
+
+def progress(stage: str, fraction: float | None, detail: str | None = None) -> None:
+    if (r := REPORTER.get()) is not None:
+        r.progress(stage, fraction, detail)
 
 
 def slugify(text: str, max_len: int = 50) -> str:
@@ -165,7 +179,22 @@ def download(url: str) -> tuple[Path, dict]:
     import yt_dlp
 
     DOWNLOADS.mkdir(exist_ok=True)
+    finished: set[str] = set()
+
+    def hook(d):
+        # Video and audio arrive as two files; report the average of both.
+        name = d.get("filename", "")
+        if d["status"] == "finished":
+            finished.add(name)
+            progress("download", min(1.0, len(finished) / 2))
+        elif d["status"] == "downloading":
+            total = d.get("total_bytes") or d.get("total_bytes_estimate") or 0
+            frac = (d.get("downloaded_bytes", 0) / total) if total else 0
+            speed = d.get("_speed_str", "").strip()
+            progress("download", min(0.99, (len(finished) + frac) / 2), speed or None)
+
     opts = {
+        "progress_hooks": [hook],
         "format": "bv*[height<=1080][ext=mp4]+ba[ext=m4a]/bv*[height<=1080]+ba/b[height<=1080]/b",
         "merge_output_format": "mp4",
         "outtmpl": str(DOWNLOADS / "%(id)s.%(ext)s"),
@@ -215,6 +244,7 @@ def transcribe_groq(video: Path, work: Path, duration: float) -> list[dict]:
         ffmpeg("-ss", str(offset), "-t", str(chunk_len), "-i", str(video),
                "-vn", "-ac", "1", "-ar", "16000", "-b:a", "48k", str(audio))
         log(f"  Transcribing {seconds_to_ts(offset)} - {seconds_to_ts(min(duration, offset + chunk_len))} (Groq)")
+        progress("transcribe", offset / duration, f"{seconds_to_ts(offset)} / {seconds_to_ts(duration)}")
         with open(audio, "rb") as f:
             resp = client.audio.transcriptions.create(
                 file=(audio.name, f.read()), model=GROQ_WHISPER_MODEL,
@@ -244,6 +274,7 @@ def transcribe_local(video: Path, duration: float) -> list[dict]:
     segments, last_report = [], 0.0
     for s in seg_iter:
         segments.append({"start": round(s.start, 2), "end": round(s.end, 2), "text": s.text.strip()})
+        progress("transcribe", min(0.99, s.end / duration), f"{seconds_to_ts(s.end)} / {seconds_to_ts(duration)}")
         if s.end - last_report > 120:
             log(f"  Transcribed {seconds_to_ts(s.end)} / {seconds_to_ts(duration)}")
             last_report = s.end
@@ -582,9 +613,11 @@ def search_for_video(args, client) -> str:
                 sys.exit("Bye.")
 
 
-def run(args, client: OpenAI | None = None) -> None:
+def run(args, client: OpenAI | None = None) -> dict:
     client = client or llm_client()
+    progress("download", 0.0)
     video, meta = get_video(args.source)
+    progress("download", 1.0)
     duration, w, h = probe(video)
     log(f"Video: {meta['title']} ({seconds_to_ts(duration)}, {w}x{h})")
 
@@ -598,12 +631,14 @@ def run(args, client: OpenAI | None = None) -> None:
         segments = json.loads(tr_file.read_text(encoding="utf-8"))
         log(f"Reusing saved transcript ({len(segments)} segments)")
     else:
+        progress("transcribe", 0.0)
         log(f"Transcribing with {'Groq Whisper' if TRANSCRIBE == 'groq' else 'local Whisper (this can take a while on CPU)'}...")
         segments = (transcribe_groq(video, work, duration) if TRANSCRIBE == "groq"
                     else transcribe_local(video, duration))
         if not segments:
             sys.exit("Whisper found no speech in this video.")
         tr_file.write_text(json.dumps(segments, indent=1, ensure_ascii=False), encoding="utf-8")
+    progress("transcribe", 1.0)
 
     # --- Pick clips (cached) ----------------------------------------------
     picks_file = work / "clip_picks.json"
@@ -612,24 +647,30 @@ def run(args, client: OpenAI | None = None) -> None:
         log(f"Reusing saved clip picks from {picks_file.relative_to(ROOT)} (use --fresh to redo)")
     else:
         log("Asking the LLM to pick clips from the transcript...")
+        progress("pick", None, "Waiting for the model")
         raw = find_clips(client, transcript_for_llm(segments), meta, duration, args)
         picks = snap_picks(raw, segments, duration, args)
         picks_file.write_text(json.dumps(picks, indent=2, ensure_ascii=False), encoding="utf-8")
     if not picks:
         sys.exit("No usable clips were returned. Try again with --fresh or another model.")
+    progress("pick", 1.0, f"{len(picks)} clips")
     log(f"{len(picks)} clips selected:")
     for i, p in enumerate(picks, 1):
         log(f"  {i}. {seconds_to_ts(p['start_sec'])}-{seconds_to_ts(p['end_sec'])}  {p['title']}")
 
     # --- Captions for all clips in one request ----------------------------
     log("Writing captions, titles and hashtags...")
+    progress("captions", None, "Waiting for the model")
     metas = describe_clips(client, picks, meta)
+    progress("captions", 1.0)
 
     # --- Cut and save -----------------------------------------------------
     insta_out, yt_out = INSTA_DIR / slug, YT_DIR / slug
     insta_out.mkdir(parents=True, exist_ok=True)
     yt_out.mkdir(parents=True, exist_ok=True)
 
+    saved = []
+    progress("cut", 0.0, f"0 / {len(picks)}")
     for i, pick in enumerate(picks, 1):
         cm = metas.get(i)
         if cm is None:
@@ -670,10 +711,14 @@ def run(args, client: OpenAI | None = None) -> None:
             (folder / f"{name}.json").write_text(json.dumps(data, indent=2, ensure_ascii=False),
                                                  encoding="utf-8")
         tmp_clip.unlink(missing_ok=True)
+        saved.append(name)
+        progress("cut", i / len(picks), f"{i} / {len(picks)}")
 
+    progress("cut", 1.0, f"{len(saved)} clips saved")
     log("Done!")
     log(f"  Instagram clips: {insta_out}")
     log(f"  YouTube clips:   {yt_out}")
+    return {"slug": slug, "title": meta["title"], "clips": saved}
 
 
 def list_models() -> None:
