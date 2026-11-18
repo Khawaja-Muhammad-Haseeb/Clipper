@@ -96,6 +96,7 @@ export function NewJob({
   const format: ClipFormat = useBackground && hasBackgrounds ? layout : plainFormat;
   const [fresh, setFresh] = useState(Boolean(initialSource));
   const [keepSource, setKeepSource] = useState(false);
+  const [endScreen, setEndScreen] = useState(true);
 
   // Job
   const [job, setJob] = useState<Job | null>(null);
@@ -203,6 +204,7 @@ export function NewJob({
         format,
         fresh,
         keep_source: keepSource,
+        end_screen: endScreen && format !== "original",
       });
       setJob(j);
       setTimeout(() => progressRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
@@ -337,7 +339,24 @@ export function NewJob({
             </div>
           )}
           <p className="mt-1.5 text-xs text-zinc-500">{FORMAT_HINT[format]}</p>
-          <label className="mt-4 flex cursor-pointer items-start gap-2.5">
+          <label className={cx("mt-4 flex items-start gap-2.5", format === "original" ? "cursor-not-allowed" : "cursor-pointer")}>
+            <input
+              type="checkbox"
+              checked={endScreen && format !== "original"}
+              disabled={format === "original"}
+              onChange={(e) => setEndScreen(e.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-zinc-300 accent-zinc-900"
+            />
+            <span>
+              <span className="block text-sm text-zinc-900">Add end screen</span>
+              <span className="block text-xs text-zinc-500">
+                {format === "original"
+                  ? "Not available for the Original format."
+                  : "A 3 second Follow for more (Instagram) / Subscribe for more (YouTube) animation after each clip."}
+              </span>
+            </span>
+          </label>
+          <label className="mt-3 flex cursor-pointer items-start gap-2.5">
             <input
               type="checkbox"
               checked={fresh}
@@ -396,7 +415,7 @@ export function NewJob({
                     Open in library
                   </Button>
                 </div>
-                <ClipList clips={result.clips} />
+                <ClipList slug={result.slug} clips={result.clips} />
               </div>
             )}
           </div>

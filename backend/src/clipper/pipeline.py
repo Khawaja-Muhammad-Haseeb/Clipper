@@ -22,7 +22,7 @@ from pathlib import Path
 
 from openai import OpenAI
 
-from clipper import analysis, backgrounds, config, llm, youtube
+from clipper import analysis, backgrounds, config, llm, outro, youtube
 from clipper.errors import ClipperError
 from clipper.media import cut_clip, needs_background, probe
 from clipper.reporting import log, progress
@@ -202,7 +202,12 @@ def _cut_and_save(video: SourceVideo, picks: list[dict], metas: dict[int, ClipMe
         bg = picker.next(pick["end_sec"] - pick["start_sec"]) if picker else None
         if bg:
             log(f"    background: {bg[0].stem} from {seconds_to_ts(bg[1])}")
-        cut_clip(src, out_dir / f"{name}.mp4", pick["start_sec"], pick["end_sec"], opts.format, w, h, bg)
+        clip_path = out_dir / f"{name}.mp4"
+        cut_clip(src, clip_path, pick["start_sec"], pick["end_sec"], opts.format, w, h, bg)
+        end_screens = None
+        if opts.end_screen and opts.format != "original":
+            progress("cut", (i - 0.5) / n, f"{i} / {n} · end screens")
+            end_screens = outro.add_end_pieces(clip_path, config.OUTRO_HANDLE)
 
         ig, yt = cm.instagram, cm.youtube
         _write_json(out_dir / f"{name}.json", {
@@ -219,6 +224,8 @@ def _cut_and_save(video: SourceVideo, picks: list[dict], metas: dict[int, ClipMe
             "duration_sec": round(pick["end_sec"] - pick["start_sec"], 2),
             "format": opts.format,
             "background": {"id": bg[0].stem, "start_sec": round(bg[1], 1)} if bg else None,
+            "end_screens": end_screens,
+            "encoding": 2,  # 30 fps / 48 kHz: the clip and its end screens join without re-encoding
             "source_video": meta,
             "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "instagram": {

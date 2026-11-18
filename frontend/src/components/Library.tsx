@@ -119,7 +119,7 @@ export function Library({ initialSlug, onReclip }: { initialSlug?: string | null
                 )}
               </div>
             </div>
-            <ClipList clips={detail.clips} />
+            <ClipList slug={detail.slug} clips={detail.clips} />
           </>
         ) : null}
       </section>

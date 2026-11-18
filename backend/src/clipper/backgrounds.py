@@ -40,7 +40,9 @@ SEARCHES = [
     "rocket league gameplay no copyright free to use",
 ]
 FREE_TO_USE = re.compile(r"no[\s-]*copyright|copyright[\s-]*free|free[\s-]*to[\s-]*use|non[\s-]*copyright|royalty[\s-]*free", re.I)
-_BASE = {"quiet": True, "no_warnings": True, "noprogress": True}
+# Retry on dropped connections / read timeouts instead of failing the whole job.
+_BASE = {"quiet": True, "no_warnings": True, "noprogress": True,
+         "retries": 10, "fragment_retries": 10, "socket_timeout": 30}
 
 
 def _dir() -> Path:
@@ -138,7 +140,8 @@ def add_from_youtube(url: str, section: int = SECTION_SEC) -> dict:
     bg_id = f"yt_{info['id']}"
     opts = {
         **_BASE,
-        "format": "bv*[height<=720][vcodec^=avc1]/bv*[height<=720][ext=mp4]/bv*[height<=720]/bv*",
+        "format": ("bv*[height<=720][vcodec^=avc1][protocol=https]/bv*[height<=720][vcodec^=avc1]"
+                   "/bv*[height<=720][ext=mp4]/bv*[height<=720]/bv*"),
         "outtmpl": str(_dir() / f"{bg_id}.%(ext)s"),
         "ffmpeg_location": ffmpeg_dir(),
         "download_ranges": download_range_func(None, [(start, start + section)]),

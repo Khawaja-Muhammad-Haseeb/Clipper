@@ -169,6 +169,10 @@ def main() -> None:
                          "background = full frame on a random blurred background video | "
                          "split = full frame on top, random background video below | original = unchanged")
     ap.add_argument("--fresh", action="store_true", help="Ignore saved clip picks and ask the LLM again")
+    ap.add_argument("--no-end-screen", action="store_true",
+                    help="Don't add the Follow / Subscribe end screens")
+    ap.add_argument("--add-end-screens", action="store_true",
+                    help="Add end screens to existing clips in the library that don't have them, and exit")
     ap.add_argument("--keep-source", action="store_true",
                     help="Keep the downloaded source video (deleted after clipping by default)")
     ap.add_argument("--list-models", action="store_true", help="List models available at LLM_BASE_URL")
@@ -179,6 +183,11 @@ def main() -> None:
     try:
         if args.list_models:
             return print_models()
+        if args.add_end_screens:
+            from clipper import library
+
+            library.add_missing_end_screens()
+            return
         if args.download_backgrounds:
             from clipper import backgrounds
 
@@ -189,7 +198,7 @@ def main() -> None:
         source = args.source or search_for_video(args.youtuber, args.topic, args.latest, client)
         opts = ClipOptions(min_clips=args.min_clips, max_clips=args.max_clips, min_len=args.min_len,
                            max_len=args.max_len, format=args.format, fresh=args.fresh,
-                           keep_source=args.keep_source)
+                           keep_source=args.keep_source, end_screen=not args.no_end_screen)
         pipeline.run(source, opts, client)
     except ClipperError as e:
         sys.exit(f"Error: {e}")

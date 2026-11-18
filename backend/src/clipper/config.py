@@ -36,6 +36,9 @@ LLM_API_KEY = os.getenv("LLM_API_KEY", "")
 # Comma-separated; the next model is tried when one is rate-limited or fails.
 LLM_MODELS = [m.strip() for m in os.getenv("LLM_MODEL", "").split(",") if m.strip()]
 
+# ---- End screen -------------------------------------------------------------
+OUTRO_HANDLE = os.getenv("OUTRO_HANDLE", "")  # e.g. "@myclips", shown above "Follow for more"
+
 # ---- API server -------------------------------------------------------------
 API_HOST = os.getenv("CLIPPER_HOST", "127.0.0.1")
 API_PORT = int(os.getenv("CLIPPER_PORT", "8000"))

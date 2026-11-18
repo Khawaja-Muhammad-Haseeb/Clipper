@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
-from clipper import config
+from clipper import config, outro
+from clipper.errors import ClipperError
+from clipper.media import join, probe
+from clipper.reporting import log
 
 
 def _read_json(path: Path) -> dict:
@@ -65,6 +69,9 @@ def get_clips(slug: str, media_prefix: str = "/media") -> dict | None:
         c["name"] = c.get("name") or path.stem
         c["video"] = f"{media_prefix}/clips/{slug}/{video.name}" if video.exists() else None
         c["json"] = f"{media_prefix}/clips/{slug}/{path.name}"
+        ends = {pl: f"{media_prefix}/clips/{slug}/{f}" for pl, f in (c.get("end_screens") or {}).items()
+                if (d / f).exists()}
+        c["end_screens"] = ends or None
         clips.append(c)
     if not clips:
         return None
@@ -76,3 +83,40 @@ def get_clips(slug: str, media_prefix: str = "/media") -> dict | None:
         "can_reclip": _can_reclip(slug, src),
         "clips": clips,
     }
+
+
+def export(slug: str, name: str, platform: str | None, dst: Path) -> Path:
+    """Write the clip, with the platform's end screen appended if it has one, to dst."""
+    d = _video_dir(slug)
+    if not re.fullmatch(r"[\w-]+", name):
+        raise ClipperError("Clip not found")
+    meta = _read_json(d / f"{name}.json") if d else {}
+    if not meta:
+        raise ClipperError("Clip not found")
+    clip = d / (meta.get("video_file") or f"{name}.mp4")
+    end_file = (meta.get("end_screens") or {}).get(platform or "")
+    if not end_file or not (d / end_file).exists():
+        dst.write_bytes(clip.read_bytes())
+        return dst
+    # Clips made by this version share the end screen's encoding settings: instant join.
+    join([clip, d / end_file], dst, copy=meta.get("encoding") == 2)
+    return dst
+
+
+def add_missing_end_screens() -> int:
+    """Create end screens for library clips that don't have them (skips 'original' format)."""
+    made = 0
+    for d in sorted(config.CLIPS_DIR.iterdir()) if config.CLIPS_DIR.exists() else []:
+        for path in sorted(d.glob("*.json")):
+            meta = _read_json(path)
+            if not meta or meta.get("end_screens"):
+                continue
+            clip = d / (meta.get("video_file") or f"{path.stem}.mp4")
+            if not clip.exists() or probe(clip)[1:] != (outro.W, outro.H):
+                continue
+            log(f"End screens: {d.name}/{clip.name}")
+            meta["end_screens"] = outro.add_end_pieces(clip, config.OUTRO_HANDLE)
+            path.write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
+            made += 1
+    log(f"Added end screens to {made} clips.")
+    return made

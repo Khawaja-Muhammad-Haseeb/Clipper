@@ -19,6 +19,7 @@ class ClipOptions:
     format: ClipFormat = "crop"
     fresh: bool = False     # ignore cached clip picks
     keep_source: bool = False  # keep the downloaded / uploaded source video after clipping
+    end_screen: bool = True    # add Follow / Subscribe end screens (not for format 'original')
 
     def __post_init__(self) -> None:
         self.max_clips = max(self.min_clips, self.max_clips)

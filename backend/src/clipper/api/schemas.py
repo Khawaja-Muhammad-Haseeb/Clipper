@@ -27,8 +27,9 @@ class JobRequest(BaseModel):
     format: ClipFormat = "crop"
     fresh: bool = False
     keep_source: bool = False
+    end_screen: bool = True
 
     def options(self) -> ClipOptions:
         return ClipOptions(min_clips=self.min_clips, max_clips=self.max_clips, min_len=self.min_len,
                            max_len=self.max_len, format=self.format, fresh=self.fresh,
-                           keep_source=self.keep_source)
+                           keep_source=self.keep_source, end_screen=self.end_screen)

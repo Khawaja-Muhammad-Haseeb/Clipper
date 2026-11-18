@@ -16,7 +16,9 @@ from clipper.media import FFMPEG
 from clipper.reporting import log
 from clipper.utils import slugify
 
-_BASE = {"quiet": True, "no_warnings": True, "noprogress": True}
+# Retry on dropped connections / read timeouts instead of failing the whole job.
+_BASE = {"quiet": True, "no_warnings": True, "noprogress": True,
+         "retries": 10, "fragment_retries": 10, "socket_timeout": 30}
 _CHANNEL_FILTER = "EgIQAg%253D%253D"  # YouTube search filter: type = channel
 
 
@@ -152,7 +154,11 @@ def download(url: str, video_id: str,
     opts = {
         **_BASE,
         "progress_hooks": [hook],
-        "format": "bv*[height<=1080][ext=mp4]+ba[ext=m4a]/bv*[height<=1080]+ba/b[height<=1080]/b",
+        # Prefer direct (https) H.264 + AAC. YouTube also lists high-bitrate HLS streams
+        # that rank higher but download in slow fragments.
+        "format": ("bv*[height<=1080][vcodec^=avc1][protocol=https]+ba[ext=m4a][protocol=https]"
+                   "/bv*[height<=1080][ext=mp4][protocol=https]+ba[ext=m4a]"
+                   "/bv*[height<=1080]+ba/b[height<=1080]/b"),
         "merge_output_format": "mp4",
         "outtmpl": str(config.DOWNLOADS_DIR / "%(id)s.%(ext)s"),
         "ffmpeg_location": FFMPEG,

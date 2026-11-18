@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { type Clip, formatDuration, mediaUrl } from "@/lib/api";
+import { type Clip, clipDownloadUrl, formatDuration, mediaUrl } from "@/lib/api";
 import { Badge, CopyButton, cx } from "./ui";
 
 type Tab = "instagram" | "youtube" | "details";
@@ -30,22 +30,37 @@ function Chips({ items }: { items: string[] }) {
   );
 }
 
-export function ClipCard({ clip }: { clip: Clip }) {
+export function ClipCard({ slug, clip }: { slug: string; clip: Clip }) {
   const [tab, setTab] = useState<Tab>("instagram");
+  // The player plays the clip, then the end screen of the platform tab that's open.
+  const [phase, setPhase] = useState<"clip" | "end">("clip");
   const video = clip.video;
   const vertical = clip.format !== "original";
   const title = clip.youtube?.title || clip.working_title;
+  const platform = tab === "youtube" ? "youtube" : "instagram";
+  const endScreen = clip.end_screens?.[platform];
+  const src = phase === "end" && endScreen ? mediaUrl(endScreen) : `${mediaUrl(video)}#t=0.1`;
 
   return (
     <article className="flex flex-col overflow-hidden rounded-lg border border-zinc-200 bg-white sm:flex-row">
       <div className={cx("shrink-0 bg-zinc-950", vertical ? "sm:w-[220px]" : "sm:w-[320px]")}>
         {video ? (
-          <video
-            src={`${mediaUrl(video)}#t=0.1`}
-            controls
-            preload="metadata"
-            className={cx("mx-auto h-full w-full object-contain", vertical ? "aspect-[9/16] max-h-[420px]" : "aspect-video")}
-          />
+          <div className="relative">
+            <video
+              key={src}
+              src={src}
+              controls
+              autoPlay={phase === "end"}
+              preload="metadata"
+              onEnded={() => setPhase(phase === "clip" && endScreen ? "end" : "clip")}
+              className={cx("mx-auto h-full w-full object-contain", vertical ? "aspect-[9/16] max-h-[420px]" : "aspect-video")}
+            />
+            {phase === "end" && (
+              <span className="pointer-events-none absolute top-2 left-2 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-medium text-white">
+                End screen · {platform === "youtube" ? "YouTube" : "Instagram"}
+              </span>
+            )}
+          </div>
         ) : (
           <div className="flex aspect-[9/16] items-center justify-center text-xs text-zinc-500">Video missing</div>
         )}
@@ -144,10 +159,24 @@ export function ClipCard({ clip }: { clip: Clip }) {
         </div>
 
         <footer className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-zinc-100 px-4 py-2.5 text-xs">
-          {clip.video && (
-            <a className="font-medium text-zinc-700 hover:text-zinc-900 hover:underline" href={mediaUrl(clip.video)} download>
-              Download video
-            </a>
+          {clip.video && clip.end_screens ? (
+            <>
+              <a className="font-medium text-zinc-700 hover:text-zinc-900 hover:underline" href={clipDownloadUrl(slug, clip.name, "instagram")}>
+                Download for Instagram
+              </a>
+              <a className="font-medium text-zinc-700 hover:text-zinc-900 hover:underline" href={clipDownloadUrl(slug, clip.name, "youtube")}>
+                Download for YouTube
+              </a>
+              <a className="text-zinc-500 hover:text-zinc-900 hover:underline" href={mediaUrl(clip.video)} download>
+                Without end screen
+              </a>
+            </>
+          ) : (
+            clip.video && (
+              <a className="font-medium text-zinc-700 hover:text-zinc-900 hover:underline" href={mediaUrl(clip.video)} download>
+                Download video
+              </a>
+            )
           )}
           <a className="text-zinc-500 hover:text-zinc-900 hover:underline" href={mediaUrl(clip.json)} target="_blank" rel="noreferrer">
             JSON
@@ -159,11 +188,11 @@ export function ClipCard({ clip }: { clip: Clip }) {
   );
 }
 
-export function ClipList({ clips }: { clips: Clip[] }) {
+export function ClipList({ slug, clips }: { slug: string; clips: Clip[] }) {
   return (
     <div className="grid grid-cols-1 gap-4 2xl:grid-cols-2">
       {clips.map((c) => (
-        <ClipCard key={c.name} clip={c} />
+        <ClipCard key={c.name} slug={slug} clip={c} />
       ))}
     </div>
   );

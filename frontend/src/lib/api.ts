@@ -69,6 +69,7 @@ export type JobRequest = {
   format: ClipFormat;
   fresh: boolean;
   keep_source: boolean;
+  end_screen: boolean;
 };
 
 export type Stage = {
@@ -114,6 +115,7 @@ export type Clip = {
   duration_sec: number;
   format: string;
   background?: { id: string; start_sec: number } | null;
+  end_screens?: { instagram?: string; youtube?: string } | null;
   created_at: string;
   source_video: SourceVideo;
   video: string | null;
@@ -207,6 +209,10 @@ export const api = {
 };
 
 export const mediaUrl = (path: string | null | undefined) => (path ? `${API}${path}` : "");
+
+/** The clip joined with a platform's end screen ("none" = bare clip). */
+export const clipDownloadUrl = (slug: string, name: string, platform: "instagram" | "youtube" | "none") =>
+  `${API}/api/library/${encodeURIComponent(slug)}/${encodeURIComponent(name)}/download?platform=${platform}`;
 
 export function formatDuration(sec: number | null | undefined): string {
   if (sec == null) return "–";

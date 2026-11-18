@@ -68,6 +68,12 @@ def read_pcm(video: Path) -> bytes:
 # visually the same, several times faster than blurring at full resolution.
 W, H = 1080, 1920
 HALF = H // 2
+FPS = 30
+
+# Every clip and end screen is encoded with exactly these settings, so a clip and its
+# end screen can be joined later without re-encoding (ffmpeg concat with -c copy).
+VIDEO_ARGS = ["-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p"]
+AUDIO_ARGS = ["-c:a", "aac", "-b:a", "160k", "-ar", "48000", "-ac", "2"]
 FIT = "force_original_aspect_ratio=decrease:force_divisible_by=2"
 FILL = "force_original_aspect_ratio=increase"
 
@@ -85,10 +91,10 @@ def video_filter(fmt: ClipFormat, w: int, h: int) -> str | None:
         return None
     if fmt == "crop" and w / h > 9 / 16:
         # Centre-crop to 9:16 (loses the sides of a 16:9 video).
-        return f"[0:v]crop=trunc(ih*9/16/2)*2:ih,scale={W}:{H},setsar=1[v]"
+        return f"[0:v]fps={FPS},crop=trunc(ih*9/16/2)*2:ih,scale={W}:{H},setsar=1[v]"
     if fmt in ("crop", "blur"):
         # Whole frame, full width, over a blurred copy of itself.
-        return (f"[0:v]split[a][b];[a]{_blurred_fill(W, H, 8)}[bg];"
+        return (f"[0:v]fps={FPS},split[a][b];[a]{_blurred_fill(W, H, 8)}[bg];"
                 f"[b]scale={W}:{H}:{FIT},setsar=1[fg];"
                 f"[bg][fg]overlay=(W-w)/2:(H-h)/2[v]")
     if fmt == "background":
@@ -127,9 +133,32 @@ def cut_clip(src: Path, dst: Path, start: float, end: float, fmt: ClipFormat, w:
     graph = video_filter(fmt, w, h)
     if graph:
         args += ["-filter_complex", graph, "-map", "[v]", "-map", "0:a?"]
-    args += ["-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
-             "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", str(dst)]
+    else:
+        args += ["-r", str(FPS)]
+    args += [*VIDEO_ARGS, *AUDIO_ARGS, "-movflags", "+faststart", str(dst)]
     ffmpeg(*args)
+
+
+def join(parts: list[Path], dst: Path, copy: bool = True) -> None:
+    """Concatenate videos. copy=True is instant but needs identical encoding settings
+    (true for clips and end screens made by this version); otherwise re-encode."""
+    if copy:
+        lst = dst.with_suffix(".txt")
+        lst.write_text("".join(f"file '{p.resolve().as_posix()}'\n" for p in parts), encoding="utf-8")
+        try:
+            ffmpeg("-f", "concat", "-safe", "0", "-i", str(lst), "-c", "copy", "-movflags", "+faststart", str(dst))
+        finally:
+            lst.unlink(missing_ok=True)
+        return
+    args: list[str] = []
+    for p in parts:
+        args += ["-i", str(p)]
+    n = len(parts)
+    graph = "".join(f"[{i}:v]fps={FPS},scale={W}:{H}:{FIT},pad={W}:{H}:(ow-iw)/2:(oh-ih)/2,setsar=1[v{i}];"
+                    f"[{i}:a]aresample=48000[a{i}];" for i in range(n))
+    graph += "".join(f"[v{i}][a{i}]" for i in range(n)) + f"concat=n={n}:v=1:a=1[v][a]"
+    ffmpeg(*args, "-filter_complex", graph, "-map", "[v]", "-map", "[a]",
+           *VIDEO_ARGS, *AUDIO_ARGS, "-movflags", "+faststart", str(dst))
 
 
 # Put ffmpeg on PATH at import: yt-dlp checks for it once and caches the answer,

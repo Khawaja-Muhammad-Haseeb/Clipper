@@ -19,6 +19,7 @@ Clipper/
 │       ├── analysis.py           LLM prompts: topic check, clip picking, captions
 │       ├── media.py              ffmpeg: probe, audio extraction, cutting, layouts
 │       ├── backgrounds.py        background videos: download, add, random picking
+│       ├── outro.py              animated Follow / Subscribe end screens
 │       ├── library.py            reads generated clips back from disk
 │       ├── schemas.py            ClipOptions and LLM response models
 │       ├── reporting.py          logging and per-stage progress
@@ -34,7 +35,8 @@ Clipper/
     ├── downloads/                source videos (temporary, deleted after clipping)
     ├── work/<video>/             transcript, clip picks, source info (kept, tiny)
     ├── clips/<video>/            clip_XX_<name>.mp4 + .json (Instagram + YouTube metadata)
-    └── backgrounds/              background videos (~2 min each) + .json source info
+    ├── backgrounds/              background videos (~2 min each) + .json source info
+    └── outros/                   cached end screen animation frames
 ```
 
 ## Setup (once)
@@ -94,9 +96,24 @@ If no video matches, you can switch YouTuber, change the topic, or inspect older
 | `--min-len / --max-len` | 20 / 60 | Clip length in seconds |
 | `--format` | `crop` | see **Formats** below |
 | `--fresh` | off | Ask the LLM for new clips instead of reusing saved picks |
+| `--no-end-screen` | off | Don't add Follow / Subscribe end screens |
+| `--add-end-screens` | | Add end screens to existing clips that don't have them, and exit |
 | `--keep-source` | off | Keep the downloaded source video instead of deleting it after clipping |
 | `--list-models` | | List models at `LLM_BASE_URL` (free ones only, for OpenRouter) |
 | `--download-backgrounds N` | | Download N random free-to-use background videos and exit |
+
+## End screens
+
+Each clip gets a 3 second animated end screen: the last frame freezes and darkens, a card pops in, a cursor clicks the button and it flips to the done state.
+
+| Platform | Text | Button |
+|---|---|---|
+| Instagram | Follow for more | Follow → Following (blue) |
+| YouTube | Subscribe for more | Subscribe → Subscribed (red) |
+
+The clip is stored once, plus a small end piece per platform (`clip_XX_<name>.end_instagram.mp4`, `.end_youtube.mp4`). They are joined when you download a clip **for Instagram** or **for YouTube** in the Library, and later when uploading. Joining takes about a second because both are encoded identically (1080×1920, 30 fps, 48 kHz). The Library player plays the clip followed by the end screen of the tab that's open.
+
+Set `OUTRO_HANDLE=@yourpage` in `backend/.env` to show your handle on the card. Not available for the `original` format.
 
 ## Formats
 
